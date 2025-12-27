@@ -1,6 +1,12 @@
 {
-  "version": 2,
   "rewrites": [
-    { "source": "/api/bot", "destination": "/api/bot" }
-  ]
+    { "source": "/api/bot", "destination": "/api/bot.ts" },
+    { "source": "/((?!api/.*).*)", "destination": "/index.html" }
+  ],
+  "functions": {
+    "api/bot.ts": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
+  }
 }
