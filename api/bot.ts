@@ -6,7 +6,7 @@ import { getFirestore, doc, getDoc, setDoc, increment, runTransaction } from "fi
 // --- Configuration ---
 // هام: يجب التأكد من وضع BOT_TOKEN في إعدادات البيئة في Vercel
 const BOT_TOKEN = process.env.BOT_TOKEN; 
-const APP_URL = "https://clickmaster-crypto.vercel.app"; // تأكد من تغيير هذا لرابط موقعك الحقيقي بعد الرفع
+const APP_URL = "https://clickmaster-beige.vercel.app"; // تأكد من تغيير هذا لرابط موقعك الحقيقي بعد الرفع
 
 // Firebase Config
 const firebaseConfig = {
@@ -96,7 +96,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const keyboard = {
             inline_keyboard: [
               [{ text: "🚀 تشغيل التطبيق | Play Now", web_app: { url: APP_URL } }],
-              [{ text: "📢 قناة المجتمع", url: "https://t.me/TlikerChannel" }]
+              [{ text: "📢 قناة المجتمع", url: "https://t.me/tlekerIq" }]
             ]
         };
 
