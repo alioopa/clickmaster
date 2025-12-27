@@ -1,14 +1,14 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, runTransaction, arrayUnion } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, increment, runTransaction } from "firebase/firestore";
 
 // --- Configuration ---
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const ADMIN_ID = 7927882703; 
-const APP_URL = "https://clickmaster-crypto.vercel.app";
+// هام: يجب التأكد من وضع BOT_TOKEN في إعدادات البيئة في Vercel
+const BOT_TOKEN = process.env.BOT_TOKEN; 
+const APP_URL = "https://clickmaster-crypto.vercel.app"; // تأكد من تغيير هذا لرابط موقعك الحقيقي بعد الرفع
 
-// Firebase Config (Updated)
+// Firebase Config
 const firebaseConfig = {
   apiKey: "AIzaSyBCkIAW5gtW063WtM7uP1vc5SJ5DygUZ1E",
   authDomain: "bottelegramapp-ca2fc.firebaseapp.com",
@@ -19,13 +19,18 @@ const firebaseConfig = {
   measurementId: "G-LGXJ778NZ3"
 };
 
+// تهيئة Firebase مرة واحدة فقط لتجنب الأخطاء في بيئة السيرفر
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 
+// دالة إرسال الرسائل
 const sendMessage = async (chatId: number | string, text: string, parseMode: string = '', replyMarkup: any = null) => {
-    if (!BOT_TOKEN) return;
+    if (!BOT_TOKEN) {
+        console.error("BOT_TOKEN is missing in Environment Variables");
+        return;
+    }
     try {
-        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+        const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -35,17 +40,33 @@ const sendMessage = async (chatId: number | string, text: string, parseMode: str
                 reply_markup: replyMarkup
             })
         });
-    } catch (e) { console.error(e); }
+        const data = await response.json();
+        if (!data.ok) console.error("Telegram API Error:", data);
+    } catch (e) { console.error('Fetch Error:', e); }
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') return res.status(200).send('Active');
-  if (!BOT_TOKEN) return res.status(500).json({ error: 'Token missing' });
+  // 1. اختبار الاتصال (Health Check)
+  // هذا يسمح لك بفتح رابط البوت في المتصفح للتأكد من أنه يعمل
+  if (req.method === 'GET') {
+      return res.status(200).json({ 
+          status: 'Active', 
+          message: 'ClickMaster Bot API is running!',
+          timestamp: new Date().toISOString()
+      });
+  }
 
+  // 2. التحقق من التوكن
+  if (!BOT_TOKEN) {
+      console.error("CRITICAL: BOT_TOKEN not found in env variables");
+      return res.status(500).json({ error: 'System Configuration Error: BOT_TOKEN missing' });
+  }
+
+  // 3. معالجة طلبات تليجرام (POST)
   try {
     const body = req.body;
 
-    // Handle Pre-checkout (Payment)
+    // أ) معالجة المدفوعات (Pre-checkout)
     if (body.pre_checkout_query) {
         const queryId = body.pre_checkout_query.id;
         await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerPreCheckoutQuery`, {
@@ -56,7 +77,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).send('OK');
     }
 
-    // Handle Messages
+    // ب) معالجة الرسائل النصية
     if (body.message && body.message.text) {
       const chatId = body.message.chat.id;
       const text = body.message.text as string;
@@ -64,7 +85,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const userId = String(user.id);
       const firstName = user.first_name || 'صديقي';
 
-      // STRICTLY ONLY RESPOND TO COMMANDS (Prevent Spam)
+      // الرد فقط على أمر /start لتجنب الإزعاج
       if (text.startsWith('/start')) {
         const args = text.split(' ');
         const referralCode = args.length > 1 ? args[1] : null;
@@ -80,29 +101,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         };
 
         if (!userSnap.exists()) {
-            // --- NEW USER ---
+            // --- تسجيل مستخدم جديد ---
+            const newUserData = {
+                id: userId,
+                name: firstName,
+                balance: 1000, 
+                energy: 1000,
+                maxEnergy: 1000,
+                referrals: 0,
+                joinDate: new Date().toLocaleDateString('ar-EG'),
+                role: 'user',
+                isBanned: false,
+                walletAddress: '',
+                ownedProducts: [],
+                completedTaskIds: [],
+                notificationsEnabled: true
+            };
+
+            let referrerIdToNotify = null;
+
             if (referralCode && referralCode !== userId) {
                 try {
+                    // محاولة استخدام Transaction للإحالة
                     await runTransaction(db, async (transaction) => {
                         const referrerRef = doc(db, 'users', referralCode);
                         const referrerSnap = await transaction.get(referrerRef);
 
                         if (referrerSnap.exists()) {
                             transaction.set(userRef, {
-                                id: userId,
-                                name: firstName,
-                                balance: 2000, 
-                                energy: 1000,
-                                maxEnergy: 1000,
-                                referrals: 0,
-                                joinDate: new Date().toLocaleDateString('ar-EG'),
-                                role: 'user',
-                                isBanned: false,
-                                referredBy: referralCode,
-                                walletAddress: '',
-                                ownedProducts: [],
-                                completedTaskIds: [],
-                                notificationsEnabled: true // Default Preference
+                                ...newUserData,
+                                balance: 2000, // مكافأة مضاعفة
+                                referredBy: referralCode
                             });
 
                             transaction.update(referrerRef, {
@@ -110,66 +139,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                                 balance: increment(1000)
                             });
                             
-                            // Notify Referrer (Transactional Message - Allowed)
                             const refData = referrerSnap.data();
                             if (refData.notificationsEnabled !== false) {
-                                await sendMessage(referralCode, `🎉 *صديق جديد انضم!*\n\n${firstName} دخل عبر رابطك.\n💰 +1000 نقطة لك.`, 'Markdown');
+                                referrerIdToNotify = referralCode;
                             }
                         } else {
-                            // Referrer invalid
-                            transaction.set(userRef, {
-                                id: userId,
-                                name: firstName,
-                                balance: 1000,
-                                energy: 1000,
-                                maxEnergy: 1000,
-                                referrals: 0,
-                                joinDate: new Date().toLocaleDateString('ar-EG'),
-                                role: 'user',
-                                isBanned: false,
-                                ownedProducts: [],
-                                completedTaskIds: [],
-                                notificationsEnabled: true
-                            });
+                            transaction.set(userRef, newUserData);
                         }
                     });
-                } catch (e) { console.error(e); }
+                } catch (e) { 
+                    console.error('Transaction Failed (Fallback used):', e);
+                    await setDoc(userRef, newUserData); // تسجيل عادي في حال فشل الترانزاكشن
+                }
             } else {
-                // Direct Join
-                await setDoc(userRef, {
-                    id: userId,
-                    name: firstName,
-                    balance: 1000,
-                    energy: 1000,
-                    maxEnergy: 1000,
-                    referrals: 0,
-                    joinDate: new Date().toLocaleDateString('ar-EG'),
-                    role: 'user',
-                    isBanned: false,
-                    ownedProducts: [],
-                    completedTaskIds: [],
-                    notificationsEnabled: true
-                });
+                await setDoc(userRef, newUserData);
             }
 
+            // إرسال رسالة الترحيب
             const welcomeMsg = `👋 *أهلاً بك يا ${firstName}!*\n\nلقد بدأت رحلتك في *ClickMaster*. 🚀\nاضغط على الزر بالأسفل لبدء التعدين وجمع المكافآت.`;
             await sendMessage(chatId, welcomeMsg, 'Markdown', keyboard);
 
-            // Notify Admin (Optional, keep quiet if high volume)
-            // sendMessage(ADMIN_ID, `New User: ${firstName} (${userId})`, 'Markdown');
+            // إشعار صاحب الإحالة
+            if (referrerIdToNotify) {
+                await sendMessage(referrerIdToNotify, `🎉 *صديق جديد انضم!*\n\n${firstName} دخل عبر رابطك.\n💰 +1000 نقطة لك.`, 'Markdown');
+            }
 
         } else {
-            // --- EXISTING USER ---
-            // Just send a short "Welcome Back" navigation message. Do not re-register.
+            // --- مستخدم موجود مسبقاً ---
             const backMsg = `مرحباً بعودتك ${firstName}! 👋\n\nاضغط على الزر أدناه للدخول إلى حسابك.`;
             await sendMessage(chatId, backMsg, '', keyboard);
         }
-      } 
-      // IGNORE ALL OTHER MESSAGES (Prevents Spam Loops)
+      }
     }
+    
     return res.status(200).send('OK');
   } catch (error) {
-    console.error('Error:', error);
-    return res.status(500).send('Error');
+    console.error('Bot Handler Error:', error);
+    return res.status(500).send('Internal Server Error');
   }
 }
