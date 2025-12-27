@@ -1,19 +1,17 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, doc, getDoc, setDoc, increment, runTransaction } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 
-// --- Configuration ---
+// =================================================================
+// 🚨 منطقة الطوارئ: ضع التوكن هنا مباشرة إذا لم يعمل من Vercel 🚨
+// مثال: const MANUAL_TOKEN = "7654321098:AAGxExampleToken...";
+const MANUAL_TOKEN = "8030726883:AAGrasLU1DCg7bQDUCjYfj7DtqtZToz38xA"; 
+// =================================================================
 
-// 👇👇👇 خيار الطوارئ: ضع التوكن هنا بين علامات التنصيص إذا لم يعمل في Vercel 👇👇👇
-const HARDCODED_TOKEN = "8030726883:AAGrasLU1DCg7bQDUCjYfj7DtqtZToz38xA"; 
-// 👆👆👆 مثال: const HARDCODED_TOKEN = "123456:ABC-DEF...";
-
-// الأولوية لمتغير البيئة، ثم التوكن اليدوي
-const BOT_TOKEN = (process.env.BOT_TOKEN || HARDCODED_TOKEN || "").trim();
 const APP_URL = "https://clickmaster-crypto.vercel.app"; 
 
-// Firebase Config
+// --- 1. إعداد Firebase بشكل آمن ---
 const firebaseConfig = {
   apiKey: "AIzaSyBCkIAW5gtW063WtM7uP1vc5SJ5DygUZ1E",
   authDomain: "bottelegramapp-ca2fc.firebaseapp.com",
@@ -24,151 +22,133 @@ const firebaseConfig = {
   measurementId: "G-LGXJ778NZ3"
 };
 
-// Initialize Firebase safely for Serverless environment
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-const db = getFirestore(app);
+// تهيئة المتغيرات خارج المعالج
+let db: any = null;
+try {
+    const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+    db = getFirestore(app);
+} catch (e) {
+    console.error("🔥 خطأ في تهيئة Firebase:", e);
+}
 
-// Helper to send messages
-const sendMessage = async (chatId: number | string, text: string, parseMode: string = '', replyMarkup: any = null) => {
-    if (!BOT_TOKEN) return;
+// --- 2. دالة إرسال الرسائل (مستقلة تماماً) ---
+const sendMessage = async (token: string, chatId: number | string, text: string, replyMarkup: any = null) => {
     try {
-        const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+        const url = `https://api.telegram.org/bot${token}/sendMessage`;
+        const body = {
+            chat_id: chatId,
+            text: text,
+            parse_mode: 'Markdown',
+            reply_markup: replyMarkup
+        };
+        
+        console.log(`📤 إرسال رسالة إلى ${chatId}...`);
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: chatId,
-                text: text,
-                parse_mode: parseMode,
-                reply_markup: replyMarkup
-            })
+            body: JSON.stringify(body)
         });
+        
         const data = await response.json();
-        if (!data.ok) console.error('Telegram API Error:', data);
+        if (!data.ok) {
+            console.error('❌ خطأ من تليجرام:', JSON.stringify(data));
+        } else {
+            console.log('✅ تم الإرسال بنجاح');
+        }
     } catch (e) {
-        console.error('Fetch Error:', e);
+        console.error('❌ خطأ في الشبكة (Fetch):', e);
     }
 };
 
+// --- 3. المعالج الرئيسي (Handler) ---
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // 1. Health & Config Check (GET Request)
-  // افتح رابط: https://your-site.vercel.app/api/bot في المتصفح لترى النتيجة
-  if (req.method === 'GET') {
-      return res.status(200).json({ 
-          status: 'Running', 
-          message: 'Bot Endpoint is active',
-          // هذه الأسطر ستخبرك إذا كان التوكن موجوداً وصحيحاً
-          config_check: {
-              token_exists: !!BOT_TOKEN,
-              token_source: process.env.BOT_TOKEN ? 'Environment Variable (Vercel)' : (HARDCODED_TOKEN ? 'Hardcoded File' : 'MISSING'),
-              token_prefix: BOT_TOKEN ? `${BOT_TOKEN.substring(0, 5)}...` : 'N/A'
-          },
-          timestamp: new Date().toISOString()
-      });
-  }
+    // تحديد التوكن: الأولوية لـ Environment Var ثم اليدوي
+    const BOT_TOKEN = (process.env.BOT_TOKEN || MANUAL_TOKEN || "").trim();
 
-  // 2. Critical Check
-  if (!BOT_TOKEN) {
-      console.error("CRITICAL: No BOT_TOKEN found.");
-      return res.status(500).json({ error: 'BOT_TOKEN is missing. Please set it in Vercel Env Vars or hardcode it in bot.ts' });
-  }
-
-  try {
-    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-    
-    // A. Handle Pre-checkout (Payments)
-    if (body.pre_checkout_query) {
-        const queryId = body.pre_checkout_query.id;
-        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerPreCheckoutQuery`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pre_checkout_query_id: queryId, ok: true })
+    // فحص الصحة (GET Request)
+    if (req.method === 'GET') {
+        return res.status(200).json({ 
+            status: 'Online 🟢', 
+            token_status: BOT_TOKEN ? 'Configured ✅' : 'Missing ❌',
+            token_source: process.env.BOT_TOKEN ? 'Env Var' : (MANUAL_TOKEN && MANUAL_TOKEN !== "8030726883:AAGrasLU1DCg7bQDUCjYfj7DtqtZToz38xA" ? 'Manual Code' : 'None')
         });
-        return res.status(200).send('OK');
     }
 
-    // B. Handle Messages
-    if (body.message && body.message.text) {
-      const chatId = body.message.chat.id;
-      const text = body.message.text as string;
-      const user = body.message.from;
-      const userId = String(user.id);
-      const firstName = user.first_name || 'صديقي';
+    // التحقق من وجود التوكن
+    if (!BOT_TOKEN || BOT_TOKEN === "ضع_التوكن_هنا_مباشرة") {
+        console.error("🚨 خطأ قاتل: لا يوجد توكن!");
+        // نرجع 200 لكي لا يعيد تليجرام المحاولة ويغرق السيرفر
+        return res.status(200).send('No Token');
+    }
 
-      // --- Debug: /ping ---
-      if (text === '/ping') {
-          await sendMessage(chatId, `🏓 Pong!\n✅ التوكن يعمل بنجاح.\n📡 المصدر: ${process.env.BOT_TOKEN ? 'Vercel Env' : 'Local File'}`);
-          return res.status(200).send('OK');
-      }
+    try {
+        // تحليل الطلب
+        const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+        
+        if (!body || !body.message) {
+            return res.status(200).send('No Message');
+        }
 
-      // --- Command: /start ---
-      if (text.startsWith('/start')) {
-        try {
-            const args = text.split(' ');
-            const referralCode = args.length > 1 ? args[1] : null;
-            const userRef = doc(db, 'users', userId);
-            
-            // Check Database Connection
-            let userSnap;
-            try {
-                userSnap = await getDoc(userRef);
-            } catch (firestoreErr: any) {
-                 await sendMessage(chatId, `⚠️ خطأ في قاعدة البيانات:\n${firestoreErr.message}\n\nتأكد من إعدادات Firestore Rules.`);
-                 throw firestoreErr;
-            }
+        const chatId = body.message.chat.id;
+        const text = body.message.text || '';
+        const user = body.message.from;
+        const firstName = user.first_name || 'Friend';
+        const userId = String(user.id);
 
+        console.log(`📩 رسالة جديدة: "${text}" من ${firstName} (${userId})`);
+
+        // --- أوامر البوت ---
+
+        // 1. أمر التشخيص /ping
+        if (text === '/ping') {
+            await sendMessage(BOT_TOKEN, chatId, '🏓 **Pong!**\nالسيرفر يعمل والاتصال ممتاز.');
+            return res.status(200).send('OK');
+        }
+
+        // 2. أمر البداية /start
+        if (text.startsWith('/start')) {
             const keyboard = {
                 inline_keyboard: [
-                  [{ text: "🚀 تشغيل التطبيق | Play Now", web_app: { url: APP_URL } }],
-                  [{ text: "📢 قناة المجتمع", url: "https://t.me/TlikerChannel" }]
+                    [{ text: "🚀 تشغيل التطبيق | Play Now", web_app: { url: APP_URL } }],
+                    [{ text: "📢 قناة المجتمع", url: "https://t.me/TlikerChannel" }]
                 ]
             };
 
-            if (!userSnap.exists()) {
-                // New User Registration
-                const newUserData = {
-                    id: userId,
-                    name: firstName,
-                    balance: 1000, 
-                    energy: 1000,
-                    maxEnergy: 1000,
-                    referrals: 0,
-                    joinDate: new Date().toLocaleDateString('ar-EG'),
-                    role: 'user',
-                    isBanned: false,
-                    walletAddress: '',
-                    ownedProducts: [],
-                    completedTaskIds: [],
-                    notificationsEnabled: true
-                };
-
-                if (referralCode && referralCode !== userId) {
-                    // Simple referral logic without transaction to avoid permission errors for now
-                    await setDoc(userRef, { ...newUserData, balance: 2000, referredBy: referralCode });
-                    // Notify referrer (optional, skipped to ensure stability)
+            // محاولة الحفظ في قاعدة البيانات
+            let dbStatus = "✅ تم تسجيل دخولك بنجاح.";
+            try {
+                if (db) {
+                    const userRef = doc(db, 'users', userId);
+                    const userSnap = await getDoc(userRef);
+                    
+                    if (!userSnap.exists()) {
+                        await setDoc(userRef, {
+                            id: userId,
+                            name: firstName,
+                            balance: 1000,
+                            joinDate: new Date().toISOString(),
+                            role: 'user',
+                            referrals: 0
+                        });
+                        console.log(`👤 مستخدم جديد تم إنشاؤه: ${userId}`);
+                    }
                 } else {
-                    await setDoc(userRef, newUserData);
+                    dbStatus = "⚠️ البوت يعمل ولكن قاعدة البيانات غير متصلة (وضع Offline).";
                 }
-
-                const welcomeMsg = `👋 *أهلاً بك يا ${firstName}!*\n\nلقد بدأت رحلتك في *ClickMaster*. 🚀\nاضغط على الزر بالأسفل لبدء التعدين.`;
-                await sendMessage(chatId, welcomeMsg, 'Markdown', keyboard);
-
-            } else {
-                // Existing User
-                const backMsg = `مرحباً بعودتك ${firstName}! 👋\n\nحسابك جاهز، انطلق الآن!`;
-                await sendMessage(chatId, backMsg, '', keyboard);
+            } catch (dbError: any) {
+                console.error("🔥 خطأ قاعدة البيانات:", dbError);
+                dbStatus = "⚠️ حدث خطأ في قاعدة البيانات، لكن يمكنك اللعب.";
             }
 
-        } catch (err) {
-            console.error('Logic Error:', err);
+            // إرسال الرد
+            await sendMessage(BOT_TOKEN, chatId, `👋 *أهلاً بك يا ${firstName}!*\n\n${dbStatus}\n\nاضغط بالأسفل للدخول:`, keyboard);
         }
-      }
-    }
-    
-    return res.status(200).send('OK');
 
-  } catch (error) {
-    console.error('Handler Error:', error);
-    return res.status(200).send('Error');
-  }
+        // دائماً نرجع 200 OK
+        return res.status(200).send('OK');
+
+    } catch (error) {
+        console.error('🔥 خطأ غير متوقع في المعالج:', error);
+        return res.status(200).send('Crash Handled');
+    }
 }
