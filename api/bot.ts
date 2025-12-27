@@ -6,7 +6,7 @@ import { getFirestore, doc, getDoc, setDoc, increment, runTransaction } from "fi
 // --- Configuration ---
 
 // 👇👇👇 خيار الطوارئ: ضع التوكن هنا بين علامات التنصيص إذا لم يعمل في Vercel 👇👇👇
-const HARDCODED_TOKEN = ""; 
+const HARDCODED_TOKEN = "8030726883:AAGrasLU1DCg7bQDUCjYfj7DtqtZToz38xA"; 
 // 👆👆👆 مثال: const HARDCODED_TOKEN = "123456:ABC-DEF...";
 
 // الأولوية لمتغير البيئة، ثم التوكن اليدوي
