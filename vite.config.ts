@@ -1,3 +1,4 @@
+
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -9,10 +10,18 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'firebase-vendor': ['firebase/app', 'firebase/firestore', 'firebase/storage'],
-          'ui-vendor': ['lucide-react']
+        manualChunks(id) {
+            if (id.includes('node_modules')) {
+                if (id.includes('firebase')) {
+                    return 'firebase-vendor';
+                }
+                if (id.includes('react')) {
+                    return 'react-vendor';
+                }
+                if (id.includes('lucide-react')) {
+                    return 'ui-vendor';
+                }
+            }
         }
       }
     }
